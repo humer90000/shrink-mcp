@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shrink"
+version = "0.4.0"
+description = "Cuts diffs, logs and file trees before they go into an agent chat"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "humer90000" }]
+
+[project.optional-dependencies]
+# plain install stays stdlib. this extra makes the token line match cl100k
+tokens = ["tiktoken"]
+
+[project.scripts]
+shrink = "shrink:main"
+
+[tool.setuptools]
+py-modules = ["shrink"]
+license-files = ["LICENSE"]
