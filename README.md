@@ -116,9 +116,13 @@ shrink tree
 type build.log | shrink
 ```
 
-`shrink log` with no file and no pipe used to wait forever. It now says so. A UTF-16 log from Notepad is read, including when it is posted to `/log`. `npm ERR!` counts as an error. A line that only says `0 errors` or `errors: 0` does not. A Python traceback keeps the exception at the bottom, not just the word Traceback.
+`shrink log` with no file and no pipe used to wait forever. It now says so. A UTF-16 log from Notepad is read, including when it is posted to `/log`. Repeated lines collapse (`compile ok  x200`). When the lines are all different and the file is long, it keeps the error, a few lines around it, and the tail. That is the second example above.
 
-`diff` has to run inside a git repo. Lockfiles, images and binary patches are not expanded, even when the diff is short. A repo that has no commit yet lists the new files instead of dying on `HEAD`. A short normal diff is left alone. Cutting those made small edits worse.
+A line counts as an error for pytest (`FAIL`, `assert`), npm (`npm ERR!`), Rust (`error[E0308]`, `panicked`), Go (`FAIL`), a Python traceback (the exception at the bottom stays, not just the word Traceback), and a shell crash (`segmentation fault`). A line that only says `0 errors` or `errors: 0` does not.
+
+`diff` has to run inside a git repo. Lockfiles, images and binary patches are not expanded, even when the diff is short. A long file keeps the header and the first chunk of changes, then a line saying how many were hidden. A repo that has no commit yet lists the new files instead of dying on `HEAD`. A short normal diff is left alone. Cutting those made small edits worse.
+
+`tree` skips `node_modules`, `.git`, `.venv`, `venv`, `dist`, `build`, `target`, `__pycache__`, `.next`, `coverage` and `*.egg-info`. It opens three levels. Anything deeper is one note, `deeper folders not opened`, not a list of names. A directory with a lot of files shows the first dozen and a count of the rest.
 
 ```
 shrink serve
