@@ -1,6 +1,6 @@
-# shrink
+# shrink-mcp
 
-Experimental project. Fewer tokens for coding agents. Shrinks a git diff, a test log, or a repo tree when the context window is getting fat and the model starts forgetting. The first line is a rough before -> after token count. It is useful, and it is not a finished product.
+Experimental project. The package name is shrink-mcp. The command is still `shrink`. Fewer tokens for coding agents. Shrinks a git diff, a test log, or a repo tree when the context window is getting fat and the model starts forgetting. The first line is a rough before -> after token count. It is useful, and it is not a finished product.
 
 Use it from a terminal, over localhost HTTP, or as an MCP server. Cursor, Claude Code, Codex, VS Code, and Claude Desktop can all call it. Only the config file changes.
 

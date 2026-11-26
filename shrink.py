@@ -1,4 +1,4 @@
-# shrink: cuts diffs, logs and file trees before they land in a chat.
+# shrink-mcp: cuts diffs, logs and file trees before they land in a chat.
 # runs on its own (cli, pipe, serve, watch) and as mcp.
 # cursor, vscode, claude code, claude desktop all eat the same stdio.
 #
@@ -648,7 +648,7 @@ def mcp_reply(msg):
             "result": {
                 "protocolVersion": ver,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "shrink", "version": VER},
+                "serverInfo": {"name": "shrink-mcp", "version": VER},
             },
         }
     if method == "ping":
@@ -732,7 +732,7 @@ def mcp_loop():
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "shrink/" + VER
+    server_version = "shrink-mcp/" + VER
     # was: leave Python/x.y.z in the header. no reason to advertise the interpreter
     sys_version = ""
 
@@ -884,7 +884,7 @@ def snippet(kind):
     if kind == "vscode":
         return {
             "servers": {
-                "shrink": {
+                "shrink-mcp": {
                     "type": "stdio",
                     "command": cmd[0],
                     "args": [*cmd[1:], script, "mcp"],
@@ -893,7 +893,7 @@ def snippet(kind):
         }
     block = {
         "mcpServers": {
-            "shrink": {
+            "shrink-mcp": {
                 "command": cmd[0],
                 "args": [*cmd[1:], script, "mcp"],
             }
@@ -908,7 +908,7 @@ def codex_text():
     script = str(HERE).replace("\\", "/")
     args = [*cmd[1:], script, "mcp"]
     quoted = ", ".join('"%s"' % a for a in args)
-    return "[mcp_servers.shrink]\ncommand = \"%s\"\nargs = [%s]\n" % (cmd[0], quoted)
+    return "[mcp_servers.\"shrink-mcp\"]\ncommand = \"%s\"\nargs = [%s]\n" % (cmd[0], quoted)
 
 
 def config_path(kind):
@@ -931,7 +931,7 @@ def merge_codex(path, block):
     old = ""
     if path.exists():
         old = path.read_text(encoding="utf-8")
-        if "[mcp_servers.shrink]" in old:
+        if "[mcp_servers.\"shrink-mcp\"]" in old:
             return False
     path.parent.mkdir(parents=True, exist_ok=True)
     # append. rewriting the file would eat the rest of the user's config
