@@ -8,6 +8,83 @@ Python 3.9 or newer. No required packages. MIT license.
 
 On this Windows box `python` is the store stub and does nothing. Use `py -3`. If your `python` actually runs, use that instead.
 
+## examples
+
+Both were `py -3 shrink.py log build.log` on this machine, no tiktoken. The first line of the answer is the before -> after count.
+
+### Same line, 200 times
+
+The file had 201 lines. Line 1 through 200 were identical. Line 201 was the error.
+
+```
+compile ok
+compile ok
+compile ok
+... 197 more "compile ok" ...
+Error: disk full, cannot write C:/build/out.bin
+```
+
+415 tokens in. The program printed only this:
+
+```
+rough tokens: 415 -> 18
+
+compile ok  x200
+Error: disk full, cannot write C:/build/out.bin
+```
+
+`x200` means the line was there 200 times. The error sentence is unchanged.
+
+### 120 different lines, one error in the middle
+
+Nothing repeats. `file_001` through `file_120`, and at `file_071` the compiler error:
+
+```
+compiled src/file_001.ts
+compiled src/file_002.ts
+compiled src/file_003.ts
+... file_004 through file_070, each name different ...
+src/pay.ts(40,12): error TS2304: Cannot find name total
+compiled src/file_072.ts
+... file_073 through file_120 ...
+```
+
+732 tokens in, 176 back. `file_001` through `file_068` are gone. The error is still there, with the two lines above it, and the end of the file is still there:
+
+```
+rough tokens: 732 -> 176
+
+... lines hidden: 68
+compiled src/file_069.ts
+compiled src/file_070.ts
+src/pay.ts(40,12): error TS2304: Cannot find name total
+compiled src/file_072.ts
+compiled src/file_073.ts
+compiled src/file_074.ts
+compiled src/file_075.ts
+compiled src/file_076.ts
+compiled src/file_077.ts
+compiled src/file_078.ts
+... lines hidden: 27
+compiled src/file_106.ts
+compiled src/file_107.ts
+compiled src/file_108.ts
+compiled src/file_109.ts
+compiled src/file_110.ts
+compiled src/file_111.ts
+compiled src/file_112.ts
+compiled src/file_113.ts
+compiled src/file_114.ts
+compiled src/file_115.ts
+compiled src/file_116.ts
+compiled src/file_117.ts
+compiled src/file_118.ts
+compiled src/file_119.ts
+compiled src/file_120.ts
+```
+
+`... lines hidden: 68` is `file_001` to `file_068`. The second hidden block is `file_079` to `file_105`. What a person needs from this log is the `TS2304` line, and it survived.
+
 ## install
 
 From a checkout:
