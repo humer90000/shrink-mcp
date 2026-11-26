@@ -17,8 +17,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-# 0.2 was mcp only. 0.3.1 was the laptop script. 0.4 is the one I'd actually hand someone
-VER = "0.4.0"
+# 0.2 was mcp only. 0.3.1 was the laptop script. 0.4.2 after another pass on real logs
+VER = "0.4.2"
 
 # a huge log hung the process once. stop reading past this
 MAX_BYTES = 2_000_000
@@ -42,6 +42,10 @@ lockfiles = {
     "pnpm-lock.yaml",
     "cargo.lock",
     "poetry.lock",
+    "uv.lock",
+    "bun.lock",
+    "composer.lock",
+    "gemfile.lock",
 }
 # images and minified junk just add noise to a diff
 bin_suffixes = (
@@ -65,9 +69,10 @@ on its own:
   py -3 shrink.py serve [port]         http://127.0.0.1:8765  this machine only
   py -3 shrink.py watch                rewrites .shrink/last.txt every 2s
 
-hook up an editor (cursor / vscode / claude, same protocol):
+hook up an editor (cursor / vscode / claude / codex, same protocol):
   py -3 shrink.py setup
   py -3 shrink.py setup vscode --write
+  py -3 shrink.py setup codex
   py -3 shrink.py mcp                  the editor starts this, don't run it by hand
 """
 
@@ -79,7 +84,8 @@ class GiveUp(Exception):
 def fix_stdio():
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            # newline=\n so a piped line is not "\r\n". mcp used to break on the \r
+            stream.reconfigure(encoding="utf-8", errors="replace", newline="\n")
 
 
 # False = haven't looked yet. None = tiktoken isn't installed, keep going.
@@ -120,18 +126,34 @@ def report(before, body, note=""):
     return head + body.rstrip() + "\n"
 
 
-def read_capped(path):
-    raw = Path(path).read_bytes()
-    cut = len(raw) > MAX_BYTES
-    text = raw[:MAX_BYTES].decode("utf-8", "replace")
-    return text, cut
+_ansi = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def decode_bytes(raw):
+    # text = raw.decode("utf-8", "replace")
+    # notepad on windows saves "unicode" which is utf-16, and that came out as garbage
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16", "replace")
+    if b"\x00" in raw[:2048]:
+        raise GiveUp("looks like a binary file, not a log")
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw.decode("utf-8-sig", "replace")
+    return raw.decode("utf-8", "replace")
+
+
+def read_capped(path, limit=MAX_BYTES):
+    # raw = Path(path).read_bytes()
+    # the cap checked the length after the whole file was already in ram
+    with open(path, "rb") as fh:
+        raw = fh.read(limit + 1)
+    cut = len(raw) > limit
+    return decode_bytes(raw[:limit]), cut
 
 
 def read_stdin_capped():
     raw = sys.stdin.buffer.read(MAX_BYTES + 1)
     cut = len(raw) > MAX_BYTES
-    text = raw[:MAX_BYTES].decode("utf-8", "replace")
-    return text, cut
+    return decode_bytes(raw[:MAX_BYTES]), cut
 
 
 def git_root(start):
@@ -142,10 +164,24 @@ def git_root(start):
     return None
 
 
+def skip_dir(name):
+    if name in junk_dirs:
+        return True
+    # setuptools leaves shrink.egg-info next to the code. not part of the tree
+    return name.endswith(".egg-info")
+
+
+def git_argv(root, args):
+    # git config stays alone. a repo on a drive with no owner (this W:) is "dubious"
+    # and diff died before it printed anything. the -c flag is just for this call
+    folder = str(Path(root).resolve()).replace("\\", "/")
+    return ["git", "-c", "safe.directory=" + folder, *args]
+
+
 def run_git(root, args):
     try:
         proc = subprocess.run(
-            ["git", *args],
+            git_argv(root, args),
             cwd=root,
             capture_output=True,
             text=True,
@@ -160,21 +196,75 @@ def run_git(root, args):
     return proc.stdout
 
 
+def has_head(root):
+    try:
+        proc = subprocess.run(
+            git_argv(root, ["rev-parse", "--verify", "HEAD"]),
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except FileNotFoundError:
+        raise GiveUp("git is not on PATH")
+    return proc.returncode == 0
+
+
+def format_untracked(raw):
+    files = [name for name in raw.splitlines() if name.strip()]
+    if not files:
+        return ""
+    # was: "\n".join(files) with no cap. an un-ignored dump was longer than the diff
+    shown = files[:40]
+    lines = ["Untracked files, contents left out:", *shown]
+    if len(files) > 40:
+        lines.append("# more untracked not listed: %s" % (len(files) - 40))
+    return "\n".join(lines)
+
+
 def grab_diff(root):
-    # was: git diff   (without HEAD it missed stuff already staged)
-    text = run_git(root, ["diff", "HEAD"])
+    # was: text = run_git(root, ["diff", "HEAD"])
+    # no commit yet and git says "ambiguous argument HEAD"
+    text = run_git(root, ["diff", "HEAD"]) if has_head(root) else ""
     names = run_git(root, ["ls-files", "--others", "--exclude-standard"])
-    if names.strip():
-        text += "\nUntracked files, contents left out:\n" + names
-    return text
+    return text, format_untracked(names)
+
+
+def show_diff(root):
+    diff, extra = grab_diff(root)
+    # extra used to be glued onto the diff, then the squasher hid those lines
+    if diff.strip():
+        body = squash_diff(diff)
+    elif extra:
+        body = extra
+        extra = ""
+    else:
+        body = "No changes."
+    if extra:
+        body = body.rstrip() + "\n\n" + extra
+    before = diff if not extra else (diff.rstrip() + "\n" + extra).strip()
+    return report(before, body)
 
 
 def path_from_block(lines):
     for line in lines:
-        if line.startswith("diff --git "):
-            parts = line.split(" b/", 1)
-            if len(parts) == 2:
-                return parts[1].strip().strip('"')
+        if not line.startswith("diff --git "):
+            continue
+        rest = line[len("diff --git "):].strip()
+        # was: rest.split(" b/", 1)[-1].strip('"')
+        # git quotes a path that has a space, and that split missed it
+        if rest.startswith('"'):
+            names = [part for part in rest.split('"') if part and not part.isspace()]
+            if not names:
+                return ""
+            name = names[-1]
+            if name.startswith("b/"):
+                name = name[2:]
+            return name
+        parts = rest.split(" b/", 1)
+        if len(parts) == 2:
+            return parts[1].strip()
     return ""
 
 
@@ -199,12 +289,27 @@ def split_diff(diff):
     return blocks
 
 
+def clip_line(line, n=500):
+    if len(line) <= n:
+        return line
+    return line[:n] + " ... clipped"
+
+
 def squash_diff(diff):
     if not diff.strip():
         return "No changes."
-    # short patches stay whole. the first cut mangled tiny edits
-    if len(diff.splitlines()) <= 80:
-        return diff.rstrip()
+    blocks = split_diff(diff)
+    # short patches stay whole. the first cut mangled tiny edits.
+    # a 40-line lockfile and one minified line also counted as "short", so this
+    # only bails out when the patch is small and not junk
+    if (
+        len(blocks) == 1
+        and len(diff.splitlines()) <= 80
+        and len(diff) <= 8000
+    ):
+        path = path_from_block(blocks[0])
+        if not (path and boring(path)):
+            return diff.rstrip()
 
     pieces = []
     blocks = split_diff(diff)
@@ -230,13 +335,14 @@ def squash_diff(diff):
                 "diff --git", "index ", "---", "+++", "@@",
                 "new file", "deleted file", "rename ", "similarity ",
                 "Binary files", "Untracked files",
+                "old mode", "new mode", "deleted file mode", "new file mode",
             ))
             changed = (
                 line.startswith(("+", "-"))
                 and not line.startswith(("+++", "---"))
             )
             if header or (changed and changes < 80):
-                kept.append(line)
+                kept.append(clip_line(line))
                 if changed:
                     changes += 1
             else:
@@ -248,6 +354,63 @@ def squash_diff(diff):
     if hidden_files:
         pieces.append(f"# more files not expanded: {hidden_files}")
     return "\n\n".join(pieces)
+
+
+def line_is_hot(line):
+    low = _ansi.sub("", line).lower()
+    # if any(w in low for w in hot_words):
+    # "failover" contains "fail". a k8s log looked like a crash.
+    # "0 errors" from tsc did the same
+    low = low.replace("failover", " ").replace("exceptional", " ")
+    low = re.sub(r"\b0 errors?\b", " ", low)
+    low = re.sub(r"\bno errors?\b", " ", low)
+    low = re.sub(r"\b0 failed\b", " ", low)
+    low = re.sub(r"\bfailed:\s*0\b", " ", low)
+    # "errors: 0" and "0 failures" still contain the word. tsc and jest print that when green
+    low = re.sub(r"\berrors?:\s*0\b", " ", low)
+    low = re.sub(r"\b0 failures?\b", " ", low)
+    low = re.sub(r"\bfailures?:\s*0\b", " ", low)
+    low = re.sub(r"\bno failures?\b", " ", low)
+    # npm says "npm ERR!" and never the word error
+    if "err!" in low:
+        return True
+    # a shell crash doesn't say "error"
+    if "segmentation fault" in low or "segfault" in low or "core dumped" in low:
+        return True
+    if "out of memory" in low or "oomkilled" in low:
+        return True
+    return any(word in low for word in hot_words)
+
+
+def hot_span(lines, n):
+    # return range(max(0, n - 2), min(len(lines), n + 4))
+    # that kept "Traceback" and three frames, and dropped SystemExit
+    low = lines[n].lower()
+    if "traceback" in low:
+        end = n
+        limit = min(len(lines), n + 48)
+        i = n + 1
+        while i < limit:
+            s = lines[i]
+            stripped = s.strip()
+            if not stripped:
+                i += 1
+                continue
+            frame = (
+                s[:1].isspace()
+                or stripped.startswith((
+                    "File ", "...", "During handling", "The above exception",
+                    "Traceback", "at ",
+                ))
+                or stripped[0] in "^~|"
+            )
+            end = i
+            i += 1
+            if not frame:
+                break
+        return range(max(0, n - 1), end + 1)
+    # a jest/go failure is a few lines under the FAIL header, not one line
+    return range(max(0, n - 2), min(len(lines), n + 8))
 
 
 def squash_log(text):
@@ -265,19 +428,20 @@ def squash_log(text):
             lines.extend(raw[i:j])
         i = j
 
-    if len(lines) <= 80:
+    # if len(lines) <= 80: return "\n".join(lines)
+    # one of those "lines" was 2MB of base64
+    if len(lines) <= 80 and sum(len(line) for line in lines) <= 8000:
         return "\n".join(lines)
 
     hot = []
     for n, line in enumerate(lines):
-        low = line.lower()
-        if any(w in low for w in hot_words):
+        if line_is_hot(line):
             hot.append(n)
 
     keep = set()
     if hot:
         for n in hot:
-            keep.update(range(max(0, n - 2), min(len(lines), n + 4)))
+            keep.update(hot_span(lines, n))
         keep.update(range(max(0, len(lines) - 15), len(lines)))
     else:
         # no errors found. keep the start (usually the command) and the tail (usually the summary)
@@ -291,7 +455,7 @@ def squash_log(text):
             if hidden:
                 out.append(f"... lines hidden: {hidden}")
                 hidden = 0
-            out.append(line)
+            out.append(clip_line(line))
         else:
             hidden += 1
     if hidden:
@@ -303,10 +467,12 @@ def squash_tree(root, depth_limit=3, per_dir=12):
     root = Path(root).resolve()
     lines = [root.name + "/"]
     seen = 0
+    cut_deep = False
 
     def walk(folder, depth):
-        nonlocal seen
+        nonlocal seen, cut_deep
         if depth > depth_limit:
+            cut_deep = True
             return
         try:
             entries = list(folder.iterdir())
@@ -314,7 +480,7 @@ def squash_tree(root, depth_limit=3, per_dir=12):
             return
         dirs, files = [], []
         for entry in entries:
-            if entry.name in junk_dirs:
+            if skip_dir(entry.name):
                 continue
             # if entry.name.startswith("."):
             #     continue
@@ -338,6 +504,8 @@ def squash_tree(root, depth_limit=3, per_dir=12):
             walk(entry, depth + 1)
 
     walk(root, 1)
+    if cut_deep:
+        lines.append("deeper folders not opened")
     lines.append(f"\nfiles in this list: {seen}")
     return "\n".join(lines)
 
@@ -347,7 +515,7 @@ def file_dump(folder, limit=4000):
     # rglob wandered into node_modules and sat there for a minute. walk + skip
     names = []
     for dirpath, dirnames, filenames in os.walk(folder):
-        dirnames[:] = [n for n in dirnames if n not in junk_dirs]
+        dirnames[:] = [n for n in dirnames if not skip_dir(n)]
         for name in filenames:
             names.append(str(Path(dirpath) / name))
             if len(names) >= limit:
@@ -363,8 +531,7 @@ def do_diff(path=None):
     root = git_root(start)
     if root is None:
         raise GiveUp("not a git repo. cd into the project and run it again")
-    before = grab_diff(root)
-    return report(before, squash_diff(before))
+    return show_diff(root)
 
 
 def do_log(path=""):
@@ -397,20 +564,41 @@ def tool_text(text, is_error=False):
     return {"content": [{"type": "text", "text": text}], "isError": is_error}
 
 
+def as_args(args):
+    if isinstance(args, str):
+        # one client sent the object already stringified
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            return {}
+    if not isinstance(args, dict):
+        return {}
+    return args
+
+
+def as_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
 def call_tool(name, args):
-    args = args or {}
+    args = as_args(args)
     try:
         if name == "shrink_diff":
-            return tool_text(do_diff(args.get("path") or ""))
+            return tool_text(do_diff(as_text(args.get("path"))))
         if name == "shrink_log":
-            text = args.get("text") or ""
+            text = as_text(args.get("text"))
             note = ""
-            if len(text.encode("utf-8")) > MAX_BYTES:
-                text = text.encode("utf-8")[:MAX_BYTES].decode("utf-8", "replace")
+            raw = text.encode("utf-8")
+            if len(raw) > MAX_BYTES:
+                text = raw[:MAX_BYTES].decode("utf-8", "replace")
                 note = "input truncated"
             return tool_text(report(text, squash_log(text), note))
         if name == "shrink_tree":
-            return tool_text(do_tree(args.get("path") or ""))
+            return tool_text(do_tree(as_text(args.get("path"))))
     except GiveUp as err:
         return tool_text(str(err), True)
     except Exception as err:
@@ -495,34 +683,39 @@ def mcp_reply(msg):
 
 
 def write_mcp(obj):
-    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    raw = json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n"
+    # sys.stdout.write(json.dumps(obj) + "\n")
+    # text mode on windows turned that into \r\n. cursor split on \n and json.loads died
+    sys.stdout.buffer.write(raw)
+    sys.stdout.buffer.flush()
 
 
-def read_framed(first_line):
+def read_framed(first_line, stream):
     # Content-Length: 123\r\n
     # \r\n
     # {json}
     try:
-        n = int(first_line.split(":", 1)[1].strip())
+        n = int(first_line.split(b":", 1)[1].strip())
     except ValueError:
         return ""
     while True:
-        extra = sys.stdin.readline()
-        if extra == "" or extra.strip() == "":
+        extra = stream.readline()
+        if extra == b"" or extra.strip() == b"":
             break
-    return sys.stdin.read(n)
+    return stream.read(n).decode("utf-8", "replace")
 
 
 def mcp_loop():
+    # binary. the text wrapper ate \r and then a framed body came up short and we blocked
+    stream = sys.stdin.buffer
     while True:
-        line = sys.stdin.readline()
-        if line == "":
+        line = stream.readline()
+        if line == b"":
             return
-        if line.lower().startswith("content-length:"):
-            raw = read_framed(line)
+        if line.lower().startswith(b"content-length:"):
+            raw = read_framed(line, stream)
         else:
-            raw = line.strip()
+            raw = line.strip().decode("utf-8", "replace")
             if not raw:
                 continue
         try:
@@ -588,7 +781,9 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         try:
             if path == "/log":
-                text = raw.decode("utf-8", "replace")
+                # text = raw.decode("utf-8", "replace")
+                # a utf-16 body (notepad) came out as garbage on this route
+                text = decode_bytes(raw)
                 self._send(200, report(text, squash_log(text)))
                 return
             if path != "/shrink":
@@ -624,7 +819,16 @@ def make_server(port):
 def serve(port):
     # httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     # once this was reachable from a cafe wifi. localhost only
-    httpd = make_server(port)
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        raise GiveUp("port has to be 0..65535")
+    if port < 0 or port > 65535:
+        raise GiveUp("port has to be 0..65535")
+    try:
+        httpd = make_server(port)
+    except (OSError, OverflowError) as err:
+        raise GiveUp("can't listen: %s" % err)
     bound = httpd.server_address[1]
     sys.stderr.write(f"listening on http://127.0.0.1:{bound}\n")
     sys.stderr.write("POST /log with raw text, POST /shrink json {op,text|path}, GET /health\n")
@@ -637,8 +841,7 @@ def serve(port):
 
 
 def snapshot(root, prev=None):
-    before = grab_diff(root)
-    body = report(before, squash_diff(before))
+    body = show_diff(root)
     out = Path(root) / ".shrink" / "last.txt"
     if body == prev and out.exists():
         return out, body
@@ -699,6 +902,15 @@ def snippet(kind):
     return block
 
 
+def codex_text():
+    # codex reads toml, not the json the others use
+    cmd = launcher()
+    script = str(HERE).replace("\\", "/")
+    args = [*cmd[1:], script, "mcp"]
+    quoted = ", ".join('"%s"' % a for a in args)
+    return "[mcp_servers.shrink]\ncommand = \"%s\"\nargs = [%s]\n" % (cmd[0], quoted)
+
+
 def config_path(kind):
     home = Path.home()
     if kind == "cursor":
@@ -710,7 +922,26 @@ def config_path(kind):
     if kind == "claude-desktop":
         appdata = os.environ.get("APPDATA") or str(home / "AppData" / "Roaming")
         return Path(appdata) / "Claude" / "claude_desktop_config.json"
-    raise GiveUp("unknown target: " + kind + ". use cursor, vscode, claude, claude-desktop")
+    if kind == "codex":
+        return home / ".codex" / "config.toml"
+    raise GiveUp("unknown target: " + kind + ". use cursor, vscode, claude, claude-desktop, codex")
+
+
+def merge_codex(path, block):
+    old = ""
+    if path.exists():
+        old = path.read_text(encoding="utf-8")
+        if "[mcp_servers.shrink]" in old:
+            return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # append. rewriting the file would eat the rest of the user's config
+    extra = block
+    if old and not old.endswith("\n"):
+        extra = "\n" + extra
+    if old and not old.endswith("\n\n"):
+        extra = "\n" + extra
+    path.write_text(old + extra, encoding="utf-8")
+    return True
 
 
 def merge_json(path, fresh):
@@ -738,6 +969,21 @@ def merge_json(path, fresh):
 
 def setup(kind, write):
     kind = kind or "cursor"
+    if kind == "codex":
+        text = codex_text()
+        where = config_path(kind)
+        if not write:
+            sys.stdout.write(text)
+            sys.stdout.flush()
+            sys.stderr.write("\nthis is for codex. the file usually lives at: %s\n" % where)
+            sys.stderr.write("to append it, add --write. an existing shrink block is left alone\n")
+            return
+        if merge_codex(where, text):
+            sys.stderr.write("added shrink to %s\n" % where)
+        else:
+            sys.stderr.write("shrink is already in %s\n" % where)
+        sys.stderr.write("restart codex, it does not always pick the config up live\n")
+        return
     body = snippet(kind)
     text = json.dumps(body, ensure_ascii=False, indent=2)
     if not write:
@@ -751,6 +997,19 @@ def setup(kind, write):
     merge_json(path, body)
     sys.stderr.write(f"added shrink to {path}\n")
     sys.stderr.write("restart the editor, it does not always pick the config up live\n")
+
+
+def every_from(argv):
+    if "--every" not in argv:
+        return 2.0
+    i = argv.index("--every")
+    try:
+        n = float(argv[i + 1])
+    except (IndexError, ValueError):
+        raise GiveUp("--every needs a number of seconds")
+    if n <= 0:
+        raise GiveUp("--every needs a number of seconds")
+    return n
 
 
 def pick_port(argv):
@@ -794,7 +1053,11 @@ def main(argv=None):
         if cmd == "diff":
             emit(do_diff(argv[2] if len(argv) > 2 else ""))
         elif cmd == "log":
-            emit(do_log(argv[2] if len(argv) > 2 else ""))
+            path = argv[2] if len(argv) > 2 else ""
+            # used to read stdin anyway. on a terminal that just sat there
+            if not path and sys.stdin.isatty():
+                raise GiveUp("nothing piped in. shrink log build.log")
+            emit(do_log(path))
         elif cmd == "tree":
             emit(do_tree(argv[2] if len(argv) > 2 else ""))
         elif cmd == "mcp":
@@ -802,9 +1065,7 @@ def main(argv=None):
         elif cmd == "serve":
             serve(pick_port(argv))
         elif cmd == "watch":
-            every = 2
-            if "--every" in argv:
-                every = float(argv[argv.index("--every") + 1])
+            every = every_from(argv)
             target = ""
             for item in argv[2:]:
                 if item.startswith("--"):

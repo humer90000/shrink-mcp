@@ -1,6 +1,6 @@
 # shrink
 
-Fewer tokens for coding agents. Shrinks a git diff, a test log, or a repo tree when the context window is getting fat and the model starts forgetting. The first line is a rough before -> after token count.
+Experimental project. Fewer tokens for coding agents. Shrinks a git diff, a test log, or a repo tree when the context window is getting fat and the model starts forgetting. The first line is a rough before -> after token count. It is useful, and it is not a finished product.
 
 Use it from a terminal, over localhost HTTP, or as an MCP server. Cursor, Claude Code, Codex, VS Code, and Claude Desktop can all call it. Only the config file changes.
 
@@ -39,7 +39,9 @@ shrink tree
 type build.log | shrink
 ```
 
-`diff` has to run inside a git repo. Lockfiles, images and binary patches are not expanded. A short diff is left alone. Cutting those made small edits worse.
+`shrink log` with no file and no pipe used to wait forever. It now says so. A UTF-16 log from Notepad is read, including when it is posted to `/log`. `npm ERR!` counts as an error. A line that only says `0 errors` or `errors: 0` does not. A Python traceback keeps the exception at the bottom, not just the word Traceback.
+
+`diff` has to run inside a git repo. Lockfiles, images and binary patches are not expanded, even when the diff is short. A repo that has no commit yet lists the new files instead of dying on `HEAD`. A short normal diff is left alone. Cutting those made small edits worse.
 
 ```
 shrink serve
@@ -61,15 +63,17 @@ shrink setup
 shrink setup vscode
 shrink setup claude
 shrink setup claude-desktop
+shrink setup codex
 ```
 
-Merge it in. Other servers in that file stay put:
+Merge it in. Other servers in that file stay put. Codex is toml, so `--write` appends a block and will not add a second one:
 
 ```
 shrink setup cursor --write
 shrink setup vscode --write
 shrink setup claude --write
 shrink setup claude-desktop --write
+shrink setup codex --write
 ```
 
 Where `--write` goes:
@@ -78,6 +82,7 @@ Where `--write` goes:
 - vscode: `.vscode/mcp.json` in the current folder
 - claude code: `.mcp.json` in the current folder
 - claude desktop: `%APPDATA%\Claude\claude_desktop_config.json`
+- codex: `%USERPROFILE%\.codex\config.toml`
 
 Restart the editor after that. It does not always reload a config that is already open.
 

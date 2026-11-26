@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shrink"
-version = "0.4.0"
+version = "0.4.2"
 description = "Fewer tokens for coding agents. Shrink git diffs, test logs, and repo trees. MCP for Cursor, Claude Code, Codex, and VS Code."
 readme = "README.md"
 requires-python = ">=3.9"
