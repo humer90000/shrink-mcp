@@ -87,11 +87,17 @@ compiled src/file_120.ts
 
 ## install
 
-From a checkout:
+From PyPI:
+
+```
+py -3 -m pip install shrink-mcp
+shrink --version
+```
+
+From a checkout of this repo:
 
 ```
 py -3 -m pip install -e .
-shrink --version
 ```
 
 # was: python setup.py install
@@ -102,7 +108,7 @@ Without installing, the same thing is `py -3 shrink.py ...` from this folder.
 Optional, closer token counts (cl100k, same family most chat APIs use):
 
 ```
-py -3 -m pip install -e ".[tokens]"
+py -3 -m pip install "shrink-mcp[tokens]"
 ```
 
 Without that extra the count is a split on words and punctuation. It is still a guess, not the invoice.
