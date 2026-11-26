@@ -1,8 +1,8 @@
 # shrink
 
-Cuts git diffs, test logs, and folder trees before they land in an agent chat. The first line is a rough before -> after count.
+Fewer tokens for coding agents. Shrinks a git diff, a test log, or a repo tree when the context window is getting fat and the model starts forgetting. The first line is a rough before -> after token count.
 
-Use it from a terminal, over localhost HTTP, or as an MCP server. Cursor, VS Code, Claude Code, and Claude Desktop all speak MCP. Only the config file changes.
+Use it from a terminal, over localhost HTTP, or as an MCP server. Cursor, Claude Code, Codex, VS Code, and Claude Desktop can all call it. Only the config file changes.
 
 Python 3.9 or newer. No required packages. MIT license.
 
