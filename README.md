@@ -172,11 +172,3 @@ The tools are `shrink_diff`, `shrink_log`, `shrink_tree`. Don't start `shrink mc
 ## what it will not do
 
 It does not call a model. It does not apply the diff back. It does not open a port on the network. A log bigger than about 2 MB is cut. The token line is an estimate unless you installed the `tokens` extra.
-
-## tests
-
-```
-py -3 tests\test_shrink.py
-```
-
-GitHub runs the same file on push.
