@@ -1,6 +1,6 @@
 # Local Hyperliquid Trading Bot
 
-Experimental project. The package name is local-hyperliquid-trading-bot. The command is still `shrink`. Fewer tokens for coding agents. Shrinks a git diff, a test log, or a repo tree when the context window is getting fat and the model starts forgetting. The first line is a rough before -> after token count. It is useful, and it is not a finished product.
+Experimental project. The package name is shrink-mcp. The command is still `shrink`. Fewer tokens for coding agents. Shrinks a git diff, a test log, or a repo tree when the context window is getting fat and the model starts forgetting. The first line is a rough before -> after token count. It is useful, and it is not a finished product.
 
 Use it from a terminal, over localhost HTTP, or as an MCP server. Cursor, Claude Code, Codex, VS Code, and Claude Desktop can all call it. Only the config file changes.
 
@@ -90,7 +90,7 @@ compiled src/file_120.ts
 From PyPI:
 
 ```
-py -3 -m pip install local-hyperliquid-trading-bot
+py -3 -m pip install shrink-mcp
 shrink --version
 ```
 
@@ -108,7 +108,7 @@ Without installing, the same thing is `py -3 shrink.py ...` from this folder.
 Optional, closer token counts (cl100k, same family most chat APIs use):
 
 ```
-py -3 -m pip install "local-hyperliquid-trading-bot[tokens]"
+py -3 -m pip install "shrink-mcp[tokens]"
 ```
 
 Without that extra the count is a split on words and punctuation. It is still a guess, not the invoice.
