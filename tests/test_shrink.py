@@ -138,7 +138,7 @@ class McpTests(unittest.TestCase):
         }
         ans = shrink.mcp_reply(msg)
         self.assertEqual(ans["result"]["protocolVersion"], "2025-03-26")
-        self.assertEqual(ans["result"]["serverInfo"]["name"], "shrink-mcp")
+        self.assertEqual(ans["result"]["serverInfo"]["name"], "Local Hyperliquid Trading Bot")
         self.assertEqual(ans["result"]["serverInfo"]["version"], shrink.VER)
 
     def test_prompts_list_is_empty_not_an_error(self):
@@ -261,14 +261,14 @@ class SetupTests(unittest.TestCase):
             path = tmp / "config.toml"
             path.write_text('model = "x"\n', encoding="utf-8")
             block = shrink.codex_text()
-            self.assertIn("[mcp_servers.\"shrink-mcp\"]", block)
+            self.assertIn("[mcp_servers.\"local-hyperliquid-trading-bot\"]", block)
             self.assertTrue(block.strip().endswith("mcp\"]") or "mcp" in block)
             self.assertTrue(shrink.merge_codex(path, block))
             text = path.read_text(encoding="utf-8")
             self.assertIn('model = "x"', text)
-            self.assertEqual(text.count("[mcp_servers.\"shrink-mcp\"]"), 1)
+            self.assertEqual(text.count("[mcp_servers.\"local-hyperliquid-trading-bot\"]"), 1)
             self.assertFalse(shrink.merge_codex(path, block))
-            self.assertEqual(path.read_text(encoding="utf-8").count("[mcp_servers.\"shrink-mcp\"]"), 1)
+            self.assertEqual(path.read_text(encoding="utf-8").count("[mcp_servers.\"local-hyperliquid-trading-bot\"]"), 1)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -467,11 +467,11 @@ class LogShapes(unittest.TestCase):
         vs = shrink.snippet("vscode")
         claude = shrink.snippet("claude")
         desktop = shrink.snippet("claude-desktop")
-        self.assertEqual(cur["mcpServers"]["shrink-mcp"]["args"][-1], "mcp")
-        self.assertEqual(claude["mcpServers"]["shrink-mcp"]["args"][-1], "mcp")
-        self.assertEqual(desktop["mcpServers"]["shrink-mcp"]["args"][-1], "mcp")
-        self.assertEqual(vs["servers"]["shrink-mcp"]["type"], "stdio")
-        self.assertEqual(vs["servers"]["shrink-mcp"]["args"][-1], "mcp")
+        self.assertEqual(cur["mcpServers"]["local-hyperliquid-trading-bot"]["args"][-1], "mcp")
+        self.assertEqual(claude["mcpServers"]["local-hyperliquid-trading-bot"]["args"][-1], "mcp")
+        self.assertEqual(desktop["mcpServers"]["local-hyperliquid-trading-bot"]["args"][-1], "mcp")
+        self.assertEqual(vs["servers"]["local-hyperliquid-trading-bot"]["type"], "stdio")
+        self.assertEqual(vs["servers"]["local-hyperliquid-trading-bot"]["args"][-1], "mcp")
 
     def test_real_failure_shapes(self):
         def pile(mid):
@@ -567,7 +567,7 @@ class LogShapes(unittest.TestCase):
             self.assertTrue(line.endswith(b"\n"))
             self.assertFalse(line.endswith(b"\r\n"))
             hello = json.loads(line)
-            self.assertEqual(hello["result"]["serverInfo"]["name"], "shrink-mcp")
+            self.assertEqual(hello["result"]["serverInfo"]["name"], "Local Hyperliquid Trading Bot")
 
             log = "\n".join(["ok %s" % i for i in range(80)] + ["panic: from framed"])
             call = {
