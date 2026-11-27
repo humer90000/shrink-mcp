@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "shrink-mcp"
 version = "0.4.2"
-description = "Local Hyperliquid Trading Bot. Fewer tokens for coding agents. Shrinks git diffs, test logs, and repo trees. MCP for Cursor, Claude Code, Codex, and VS Code."
+description = "Fewer tokens for coding agents. Shrink git diffs, test logs, and repo trees. MCP for Cursor, Claude Code, Codex, and VS Code."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }

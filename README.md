@@ -1,4 +1,4 @@
-# Local Hyperliquid Trading Bot
+# shrink-mcp
 
 Experimental project. The package name is shrink-mcp. The command is still `shrink`. Fewer tokens for coding agents. Shrinks a git diff, a test log, or a repo tree when the context window is getting fat and the model starts forgetting. The first line is a rough before -> after token count. It is useful, and it is not a finished product.
 

@@ -1,4 +1,4 @@
-# Local Hyperliquid Trading Bot: cuts diffs, logs and file trees before they land in a chat.
+# shrink-mcp: cuts diffs, logs and file trees before they land in a chat.
 # runs on its own (cli, pipe, serve, watch) and as mcp.
 # cursor, vscode, claude code, claude desktop all eat the same stdio.
 #
@@ -648,7 +648,7 @@ def mcp_reply(msg):
             "result": {
                 "protocolVersion": ver,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "Local Hyperliquid Trading Bot", "version": VER},
+                "serverInfo": {"name": "shrink-mcp", "version": VER},
             },
         }
     if method == "ping":

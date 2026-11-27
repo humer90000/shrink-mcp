@@ -138,7 +138,7 @@ class McpTests(unittest.TestCase):
         }
         ans = shrink.mcp_reply(msg)
         self.assertEqual(ans["result"]["protocolVersion"], "2025-03-26")
-        self.assertEqual(ans["result"]["serverInfo"]["name"], "Local Hyperliquid Trading Bot")
+        self.assertEqual(ans["result"]["serverInfo"]["name"], "shrink-mcp")
         self.assertEqual(ans["result"]["serverInfo"]["version"], shrink.VER)
 
     def test_prompts_list_is_empty_not_an_error(self):
@@ -567,7 +567,7 @@ class LogShapes(unittest.TestCase):
             self.assertTrue(line.endswith(b"\n"))
             self.assertFalse(line.endswith(b"\r\n"))
             hello = json.loads(line)
-            self.assertEqual(hello["result"]["serverInfo"]["name"], "Local Hyperliquid Trading Bot")
+            self.assertEqual(hello["result"]["serverInfo"]["name"], "shrink-mcp")
 
             log = "\n".join(["ok %s" % i for i in range(80)] + ["panic: from framed"])
             call = {
